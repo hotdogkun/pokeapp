@@ -89,7 +89,7 @@
 <body>
     <div class="search-container">
         <h1>ポケモン検索</h1>
-        <input type="text" id="searchInput" placeholder="図鑑番号（1-898）または名前を入力">
+        <input type="text" id="searchInput" placeholder="図鑑番号（1-1025）または名前を入力">
         <button id="searchButton">検索</button>
         <button id="randomButton">ランダム表示</button>
     </div>
@@ -130,8 +130,8 @@
         window.addEventListener('load', getRandomPokemon);
 
         function getRandomPokemon() {
-            // ポケモンの最大数（第8世代まで）
-            const maxPokemonId = 898;
+            // ポケモンの最大数（第9世代まで）
+            const maxPokemonId = 1025;
             const randomId = Math.floor(Math.random() * maxPokemonId) + 1;
             fetchPokemon(randomId);
         }
@@ -148,11 +148,11 @@
             // 数字かどうかをチェック
             const pokedexNumber = parseInt(searchValue);
             if (!isNaN(pokedexNumber)) {
-                // 有効な図鑑番号の範囲をチェック
-                if (pokedexNumber >= 1 && pokedexNumber <= 898) {
+                // 有効な図鑑番号の範囲をチェック（第9世代まで）
+                if (pokedexNumber >= 1 && pokedexNumber <= 1025) {
                     fetchPokemon(pokedexNumber);
                 } else {
-                    resultDiv.innerHTML = '<p>図鑑番号は1から898の間で入力してください。</p>';
+                    resultDiv.innerHTML = '<p>図鑑番号は1から1025の間で入力してください。</p>';
                 }
             } else {
                 // 名前での検索
