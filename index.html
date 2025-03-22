@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#e91e63">
     <title>ポケモン検索</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192x192.png">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -188,6 +191,19 @@
             margin-right: 8px;
             min-width: 50px;
         }
+        .install-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #3b4cca;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        .install-button:hover {
+            background-color: #2a3899;
+        }
     </style>
 </head>
 <body>
@@ -197,10 +213,51 @@
         <div class="suggestions" id="suggestions"></div>
         <button id="searchButton">検索</button>
         <button id="randomButton">ランダム表示</button>
+        <button class="install-button" style="display: none;">アプリをインストール</button>
     </div>
     <div id="result"></div>
 
     <script>
+        // サービスワーカーの登録
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker 登録成功:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('ServiceWorker 登録失敗:', error);
+                    });
+            });
+        }
+
+        // PWAインストールプロンプト
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // インストールプロンプトを表示しない
+            e.preventDefault();
+            // イベントを保存
+            deferredPrompt = e;
+            // インストールボタンを表示
+            document.querySelector('.install-button').style.display = 'block';
+        });
+
+        document.querySelector('.install-button').addEventListener('click', () => {
+            // ボタンを非表示
+            document.querySelector('.install-button').style.display = 'none';
+            // インストールプロンプトを表示
+            deferredPrompt.prompt();
+            // ユーザーの選択を待つ
+            deferredPrompt.userChoice.then((choiceResult) => {
+                if (choiceResult.outcome === 'accepted') {
+                    console.log('ユーザーがインストールを承認しました');
+                } else {
+                    console.log('ユーザーがインストールを拒否しました');
+                }
+                deferredPrompt = null;
+            });
+        });
+
         // タイプごとの背景色
         const typeColors = {
             normal: '#A8A878',
