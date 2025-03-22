@@ -239,14 +239,15 @@
                 const speciesResponse = await fetch(data.species.url);
                 const speciesData = await speciesResponse.json();
 
-                // メガシンカ、キョダイマックス、その他の特殊な姿の情報を取得
+                // メガシンカ、キョダイマックス、地域フォーム、その他の特殊な姿の情報を取得
                 let specialForms = [];
                 try {
                     const varietiesPromises = speciesData.varieties
                         .filter(v => 
                             v.pokemon.name.includes('-mega') || 
                             v.pokemon.name.includes('-gmax') ||
-                            v.pokemon.name.includes('ogerpon-')
+                            v.pokemon.name.includes('ogerpon-') ||
+                            v.pokemon.name.includes('-galar')
                         )
                         .map(v => fetch(v.pokemon.url).then(res => res.json()));
                     specialForms = await Promise.all(varietiesPromises);
@@ -273,13 +274,17 @@
                 }).join(' ');
 
                 // 全てのスプライトを取得（メガシンカとキョダイマックスを含む）
-                const sprites = getAllSprites(data.sprites);
+                const sprites = getAllSprites(data.sprites).map(sprite => ({
+                    ...sprite,
+                    types: data.types  // 通常フォームのタイプ情報を追加
+                }));
                 
-                // メガシンカ、キョダイマックス、その他の特殊な姿のスプライトを追加
+                // メガシンカ、キョダイマックス、地域フォーム、その他の特殊な姿のスプライトを追加
                 specialForms.forEach(form => {
                     const isMega = form.name.includes('-mega');
                     const isGmax = form.name.includes('-gmax');
                     const isOgerpon = form.name.includes('ogerpon-');
+                    const isGalar = form.name.includes('-galar');
                     let formName = '';
                     
                     if (isMega) {
@@ -294,19 +299,23 @@
                             'cornerstone': 'いしずえ'
                         };
                         formName = `${ogerponFormNames[ogerponForm]}のお面`;
+                    } else if (isGalar) {
+                        formName = 'ガラルのすがた';
                     }
 
                     if (form.sprites.front_default) {
                         sprites.push({
                             name: formName,
-                            url: form.sprites.front_default
+                            url: form.sprites.front_default,
+                            types: form.types  // タイプ情報も保存
                         });
                     }
                     
                     if (form.sprites.front_shiny) {
                         sprites.push({
                             name: `${formName}（色違い）`,
-                            url: form.sprites.front_shiny
+                            url: form.sprites.front_shiny,
+                            types: form.types  // タイプ情報も保存
                         });
                     }
                 });
@@ -314,8 +323,9 @@
                 const spritesHtml = sprites.map((sprite, index) => {
                     if (!sprite.url) return '';
                     const isActive = index === 0 ? 'active' : '';
+                    const typesData = sprite.types ? JSON.stringify(sprite.types).replace(/"/g, '&quot;') : '';
                     return `
-                        <div class="form-sprite ${isActive}" onclick="updateMainSprite(this, '${sprite.url}')">
+                        <div class="form-sprite ${isActive}" onclick="updateMainSprite(this, '${sprite.url}', '${typesData}')" data-types='${typesData}'>
                             <div class="sprite-container">
                                 <img src="${sprite.url}" alt="${sprite.name}" style="width: 80px;">
                             </div>
@@ -416,6 +426,14 @@
         function getAllSprites(sprites) {
             const spriteList = [];
             
+            // 公式アートワーク（デフォルトとして最初に追加）
+            if (sprites.other && sprites.other['official-artwork']?.front_default) {
+                spriteList.push({
+                    name: '公式アートワーク',
+                    url: sprites.other['official-artwork'].front_default
+                });
+            }
+
             // 通常の姿
             if (sprites.front_default) {
                 spriteList.push({
@@ -448,21 +466,10 @@
                 });
             }
 
-            // その他のフォーム
-            if (sprites.other) {
-                // 公式アートワーク
-                if (sprites.other['official-artwork']?.front_default) {
-                    spriteList.push({
-                        name: '公式アートワーク',
-                        url: sprites.other['official-artwork'].front_default
-                    });
-                }
-            }
-
             return spriteList;
         }
 
-        function updateMainSprite(element, spriteUrl) {
+        function updateMainSprite(element, spriteUrl, typesData) {
             // メインスプライトを更新
             document.getElementById('main-sprite').innerHTML = `
                 <img src="${spriteUrl}" alt="Pokemon sprite">
@@ -474,22 +481,10 @@
             });
             element.classList.add('active');
 
-            // オーガポンの場合、タイプを更新
-            if (window.ogerponTypes) {
-                const formName = element.querySelector('.form-name').textContent;
-                let types;
-                
-                if (formName.includes('いどのお面')) {
-                    types = window.ogerponTypes['wellspring'];
-                } else if (formName.includes('かまどのお面')) {
-                    types = window.ogerponTypes['hearthflame'];
-                } else if (formName.includes('いしずえのお面')) {
-                    types = window.ogerponTypes['cornerstone'];
-                } else {
-                    types = window.ogerponTypes['default'];
-                }
-
-                if (types) {
+            // タイプを更新（オーガポンまたはガラルのすがた）
+            if (typesData) {
+                try {
+                    const types = JSON.parse(typesData);
                     const typeHtml = types.map(type => {
                         const typeName = type.type.name;
                         const backgroundColor = typeColors[typeName] || '#777';
@@ -497,6 +492,8 @@
                     }).join(' ');
                     
                     document.getElementById('type-display').innerHTML = `<p>タイプ: ${typeHtml}</p>`;
+                } catch (error) {
+                    console.log('タイプの更新に失敗しました:', error);
                 }
             }
         }
