@@ -87,6 +87,12 @@
             gap: 20px;
             margin-top: 20px;
         }
+        .evolution-chain-separator {
+            text-align: center;
+            margin: 10px 0;
+            font-weight: bold;
+            color: #3b4cca;
+        }
         .evolution-card {
             background-color: white;
             padding: 15px;
@@ -408,47 +414,83 @@
                 const evolutionChain = [];
                 let evoData = evolutionData.chain;
                 
-                // 進化チェーンを配列に変換
-                while (evoData) {
-                    evolutionChain.push({
+                // 進化チェーンを配列に変換（複数の進化先に対応）
+                function processEvolutions(evoData, currentChain = []) {
+                    const currentForm = {
                         name: evoData.species.name,
                         url: evoData.species.url
-                    });
-                    evoData = evoData.evolves_to[0]; // 最初の進化系統のみを考慮
+                    };
+                    
+                    const newChain = [...currentChain, currentForm];
+                    
+                    if (evoData.evolves_to.length === 0) {
+                        evolutionChain.push(newChain);
+                    } else {
+                        evoData.evolves_to.forEach(evolution => {
+                            processEvolutions(evolution, newChain);
+                        });
+                    }
                 }
+                
+                processEvolutions(evoData);
 
                 // 進化チェーンの各ポケモンの情報を取得
-                const evolutionPromises = evolutionChain.map(async (pokemon) => {
-                    const speciesResponse = await fetch(pokemon.url);
-                    const speciesData = await speciesResponse.json();
-                    const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemon.name}`);
-                    const pokemonData = await pokemonResponse.json();
-                    
-                    return {
-                        name: speciesData.names.find(name => name.language.name === 'ja')?.name || pokemon.name,
-                        image: pokemonData.sprites.front_default,
-                        id: pokemonData.id,
-                        searchName: pokemon.name
-                    };
+                const evolutionPromises = [];
+                const processedSpecies = new Set(); // 重複を防ぐためのセット
+
+                evolutionChain.forEach(chain => {
+                    chain.forEach(pokemon => {
+                        if (!processedSpecies.has(pokemon.name)) {
+                            processedSpecies.add(pokemon.name);
+                            evolutionPromises.push(
+                                (async () => {
+                                    const speciesResponse = await fetch(pokemon.url);
+                                    const speciesData = await speciesResponse.json();
+                                    const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemon.name}`);
+                                    const pokemonData = await pokemonResponse.json();
+                                    
+                                    return {
+                                        name: speciesData.names.find(name => name.language.name === 'ja')?.name || pokemon.name,
+                                        image: pokemonData.sprites.front_default,
+                                        id: pokemonData.id,
+                                        searchName: pokemon.name
+                                    };
+                                })()
+                            );
+                        }
+                    });
                 });
 
                 // 全ての進化形態の情報を取得して表示
                 const evolutionResults = await Promise.all(evolutionPromises);
-                const evolutionHtml = evolutionResults.map((pokemon, index) => {
-                    const isCurrentPokemon = pokemon.id === data.id;
-                    return `
-                        ${index > 0 ? '<div class="evolution-arrow">→</div>' : ''}
-                        <div class="evolution-card ${isCurrentPokemon ? 'current-pokemon' : ''}" 
-                             onclick="fetchPokemon('${pokemon.searchName}')" 
-                             title="クリックして${pokemon.name}の詳細を表示">
-                            <img src="${pokemon.image}" alt="${pokemon.name}" style="width: 100px;">
-                            <p>${pokemon.name}</p>
-                        </div>
-                    `;
-                }).join('');
+                
+                // 進化チェーンをHTMLに変換
+                let evolutionHtml = '';
+                evolutionChain.forEach((chain, chainIndex) => {
+                    if (chainIndex > 0) {
+                        evolutionHtml += '<div class="evolution-chain-separator">または</div>';
+                    }
+                    
+                    evolutionHtml += '<div class="evolution-chain">';
+                    chain.forEach((pokemon, index) => {
+                        const pokemonInfo = evolutionResults.find(p => p.searchName === pokemon.name);
+                        if (pokemonInfo) {
+                            const isCurrentPokemon = pokemonInfo.id === data.id;
+                            evolutionHtml += `
+                                ${index > 0 ? '<div class="evolution-arrow">→</div>' : ''}
+                                <div class="evolution-card ${isCurrentPokemon ? 'current-pokemon' : ''}" 
+                                     onclick="fetchPokemon('${pokemonInfo.searchName}')" 
+                                     title="クリックして${pokemonInfo.name}の詳細を表示">
+                                    <img src="${pokemonInfo.image}" alt="${pokemonInfo.name}" style="width: 100px;">
+                                    <p>${pokemonInfo.name}</p>
+                                </div>
+                            `;
+                        }
+                    });
+                    evolutionHtml += '</div>';
+                });
 
                 document.getElementById('evolution-chain').innerHTML = evolutionHtml;
-
             } catch (error) {
                 resultDiv.innerHTML = '<p>ポケモンが見つかりませんでした。正しい名前を入力してください。</p>';
             }
