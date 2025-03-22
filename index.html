@@ -239,6 +239,17 @@
                 const speciesResponse = await fetch(data.species.url);
                 const speciesData = await speciesResponse.json();
 
+                // メガシンカの情報を取得
+                let megaEvolutions = [];
+                try {
+                    const varietiesPromises = speciesData.varieties
+                        .filter(v => v.pokemon.name.includes('-mega'))
+                        .map(v => fetch(v.pokemon.url).then(res => res.json()));
+                    megaEvolutions = await Promise.all(varietiesPromises);
+                } catch (error) {
+                    console.log('メガシンカの情報の取得に失敗しました:', error);
+                }
+
                 // 進化チェーンの情報を取得
                 const evolutionResponse = await fetch(speciesData.evolution_chain.url);
                 const evolutionData = await evolutionResponse.json();
@@ -257,8 +268,26 @@
                     return `<span class="type-label" style="background-color: ${backgroundColor}">${getTypeInJapanese(typeName)}</span>`;
                 }).join(' ');
 
-                // 全てのスプライトを取得
+                // 全てのスプライトを取得（メガシンカを含む）
                 const sprites = getAllSprites(data.sprites);
+                
+                // メガシンカのスプライトを追加
+                megaEvolutions.forEach(mega => {
+                    if (mega.sprites.front_default) {
+                        sprites.push({
+                            name: `メガシンカ${mega.name.includes('mega-y') ? 'Y' : 'X'}`,
+                            url: mega.sprites.front_default
+                        });
+                    }
+                    // メガシンカの色違いも追加
+                    if (mega.sprites.front_shiny) {
+                        sprites.push({
+                            name: `メガシンカ${mega.name.includes('mega-y') ? 'Y' : 'X'}（色違い）`,
+                            url: mega.sprites.front_shiny
+                        });
+                    }
+                });
+
                 const spritesHtml = sprites.map((sprite, index) => {
                     if (!sprite.url) return '';
                     const isActive = index === 0 ? 'active' : '';
