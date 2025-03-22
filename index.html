@@ -182,14 +182,11 @@
         .suggestion-item:hover {
             background-color: #f0f0f0;
         }
-        .suggestion-item img {
-            width: 30px;
-            height: 30px;
-        }
         .suggestion-item .number {
             color: #666;
             font-size: 0.9em;
             margin-right: 8px;
+            min-width: 50px;
         }
     </style>
 </head>
@@ -228,46 +225,154 @@
 
         // ポケモンの日本語名と英語名のマッピング
         let pokemonNameMapping = {};
-        let isInitialized = false;
-
-        // ポケモンの候補データ
         let pokemonSuggestions = [];
+        let isInitialized = false;
+        let isInitializing = false;
+
+        // キャッシュの有効期限（1週間）
+        const CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000;
+        const CACHE_KEY = 'pokemonCache_v2'; // バージョン管理のためのキー
 
         // 初期化関数
         async function initializePokemonNames() {
             if (isInitialized) return;
+            if (isInitializing) {
+                // 既に初期化中の場合は完了を待つ
+                await waitForInitialization();
+                return;
+            }
+
+            isInitializing = true;
             
             try {
-                const response = await fetch('https://pokeapi.co/api/v2/pokemon-species?limit=1500');
-                const data = await response.json();
+                // キャッシュをチェック
+                const cache = loadFromCache();
+                if (cache) {
+                    console.log('キャッシュからデータを読み込みました');
+                    pokemonNameMapping = cache.nameMapping;
+                    pokemonSuggestions = cache.suggestions;
+                    isInitialized = true;
+                    isInitializing = false;
+                    return;
+                }
+
+                // キャッシュがない場合はAPIから取得
+                console.log('APIからデータを取得中...');
+                await fetchPokemonData();
                 
-                // 全ポケモンの日本語名を取得
-                const namePromises = data.results.map(async (pokemon, index) => {
-                    const speciesResponse = await fetch(pokemon.url);
-                    const speciesData = await speciesResponse.json();
-                    const japaneseName = speciesData.names.find(name => name.language.name === 'ja')?.name;
-                    if (japaneseName) {
-                        pokemonNameMapping[japaneseName.toLowerCase()] = pokemon.name;
-                        // 候補リストのためにデータを保存
-                        const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemon.name}`);
-                        const pokemonData = await pokemonResponse.json();
-                        pokemonSuggestions.push({
-                            id: pokemonData.id,
-                            name: japaneseName,
-                            englishName: pokemon.name,
-                            sprite: pokemonData.sprites.front_default
-                        });
-                    }
+                // キャッシュに保存
+                saveToCache({
+                    nameMapping: pokemonNameMapping,
+                    suggestions: pokemonSuggestions,
+                    timestamp: Date.now()
                 });
                 
-                await Promise.all(namePromises);
-                // IDでソート
-                pokemonSuggestions.sort((a, b) => a.id - b.id);
                 isInitialized = true;
-                console.log('ポケモン名の初期化が完了しました');
+                console.log('ポケモンデータの初期化が完了しました');
             } catch (error) {
-                console.error('ポケモン名の初期化に失敗しました:', error);
+                console.error('ポケモンデータの初期化に失敗しました:', error);
+            } finally {
+                isInitializing = false;
             }
+        }
+
+        // 初期化完了を待つヘルパー関数
+        function waitForInitialization() {
+            return new Promise(resolve => {
+                const checkInterval = setInterval(() => {
+                    if (!isInitializing) {
+                        clearInterval(checkInterval);
+                        resolve();
+                    }
+                }, 100);
+            });
+        }
+
+        // APIからポケモンデータを取得
+        async function fetchPokemonData() {
+            const response = await fetch('https://pokeapi.co/api/v2/pokemon-species?limit=1500');
+            const data = await response.json();
+            
+            // バッチ処理で取得（一度に全部取得するとエラーになる可能性があるため）
+            const batchSize = 50;
+            for (let i = 0; i < data.results.length; i += batchSize) {
+                const batch = data.results.slice(i, i + batchSize);
+                await Promise.all(batch.map(async pokemon => {
+                    try {
+                        const speciesResponse = await fetch(pokemon.url);
+                        const speciesData = await speciesResponse.json();
+                        const japaneseName = speciesData.names.find(name => name.language.name === 'ja')?.name;
+                        if (japaneseName) {
+                            pokemonNameMapping[japaneseName.toLowerCase()] = pokemon.name;
+                            
+                            // ポケモンの基本情報だけを取得（画像なし）
+                            const pokemonResponse = await fetch(`https://pokeapi.co/api/v2/pokemon/${pokemon.name}`);
+                            const pokemonData = await pokemonResponse.json();
+                            pokemonSuggestions.push({
+                                id: pokemonData.id,
+                                name: japaneseName,
+                                englishName: pokemon.name
+                            });
+                        }
+                    } catch (error) {
+                        console.error(`${pokemon.name}の取得に失敗しました:`, error);
+                    }
+                }));
+                
+                // 進捗状況を表示
+                console.log(`ポケモンデータ取得中: ${Math.min(i + batchSize, data.results.length)}/${data.results.length}`);
+            }
+            
+            // IDでソート
+            pokemonSuggestions.sort((a, b) => a.id - b.id);
+        }
+
+        // キャッシュから読み込む
+        function loadFromCache() {
+            try {
+                const cache = JSON.parse(localStorage.getItem(CACHE_KEY));
+                if (!cache) return null;
+
+                // キャッシュの有効期限をチェック
+                if (Date.now() - cache.timestamp > CACHE_EXPIRY) {
+                    console.log('キャッシュの有効期限が切れました');
+                    localStorage.removeItem(CACHE_KEY);
+                    return null;
+                }
+
+                return cache;
+            } catch (error) {
+                console.error('キャッシュの読み込みに失敗しました:', error);
+                localStorage.removeItem(CACHE_KEY);
+                return null;
+            }
+        }
+
+        // キャッシュに保存
+        function saveToCache(data) {
+            try {
+                localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+                console.log('データをキャッシュに保存しました');
+            } catch (error) {
+                console.error('キャッシュの保存に失敗しました:', error);
+                // ストレージ容量の問題の場合、古いキャッシュをクリア
+                if (error.name === 'QuotaExceededError') {
+                    localStorage.clear();
+                    try {
+                        localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+                        console.log('ストレージをクリアして再保存しました');
+                    } catch (e) {
+                        console.error('再保存にも失敗しました');
+                    }
+                }
+            }
+        }
+
+        // キャッシュをクリア
+        function clearCache() {
+            localStorage.removeItem(CACHE_KEY);
+            console.log('キャッシュをクリアしました');
+            location.reload(); // ページを再読み込み
         }
 
         // 検索時に日本語名を英語名に変換
@@ -344,7 +449,6 @@
 
             const html = matches.map(pokemon => `
                 <div class="suggestion-item" onclick="selectPokemon('${pokemon.englishName}', '${pokemon.name}')">
-                    <img src="${pokemon.sprite}" alt="${pokemon.name}">
                     <span class="number">#${pokemon.id.toString().padStart(4, '0')}</span>
                     <span>${pokemon.name}</span>
                 </div>
@@ -516,9 +620,7 @@
                             鳴き声を再生
                         </button>
                         <p>図鑑番号: ${data.id}</p>
-                        <div id="type-display">
-                            <p>タイプ: ${typeHtml}</p>
-                        </div>
+                        <p>タイプ: ${typeHtml}</p>
                         <p>身長: ${data.height / 10}m</p>
                         <p>体重: ${data.weight / 10}kg</p>
                         <p style="font-style: italic;">${japaneseFlavorText}</p>
