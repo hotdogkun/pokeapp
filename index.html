@@ -84,6 +84,48 @@
         .current-pokemon {
             border: 3px solid #3b4cca;
         }
+        .forms-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .form-sprite {
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+            transition: transform 0.2s;
+        }
+        .form-sprite:hover {
+            transform: scale(1.1);
+            background-color: #f0f0f0;
+        }
+        .form-sprite.active {
+            background-color: #e0e0ff;
+            border: 2px solid #3b4cca;
+        }
+        .sprite-container {
+            position: relative;
+            display: inline-block;
+        }
+        .form-name {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        #main-sprite {
+            width: 200px;
+            height: 200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #main-sprite img {
+            width: 150px;
+            height: 150px;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body>
@@ -215,16 +257,37 @@
                     return `<span class="type-label" style="background-color: ${backgroundColor}">${getTypeInJapanese(typeName)}</span>`;
                 }).join(' ');
 
+                // 全てのスプライトを取得
+                const sprites = getAllSprites(data.sprites);
+                const spritesHtml = sprites.map((sprite, index) => {
+                    if (!sprite.url) return '';
+                    const isActive = index === 0 ? 'active' : '';
+                    return `
+                        <div class="form-sprite ${isActive}" onclick="updateMainSprite(this, '${sprite.url}')">
+                            <div class="sprite-container">
+                                <img src="${sprite.url}" alt="${sprite.name}" style="width: 80px;">
+                            </div>
+                            <div class="form-name">${sprite.name}</div>
+                        </div>
+                    `;
+                }).join('');
+
                 // メインのポケモン情報を表示
                 resultDiv.innerHTML = `
                     <div class="pokemon-card">
                         <h2>${japaneseName}</h2>
-                        <img src="${data.sprites.front_default}" alt="${japaneseName}" style="width: 150px;">
+                        <div id="main-sprite">
+                            <img src="${sprites[0].url}" alt="${japaneseName}">
+                        </div>
                         <p>図鑑番号: ${data.id}</p>
                         <p>タイプ: ${typeHtml}</p>
                         <p>身長: ${data.height / 10}m</p>
                         <p>体重: ${data.weight / 10}kg</p>
                         <p style="font-style: italic;">${japaneseFlavorText}</p>
+                        ${sprites.length > 1 ? '<h3>別の姿</h3>' : ''}
+                        <div class="forms-container">
+                            ${spritesHtml}
+                        </div>
                     </div>
                     <div id="evolution-chain" class="evolution-chain">
                         <p>進化チェーン読み込み中...</p>
@@ -255,7 +318,7 @@
                         name: speciesData.names.find(name => name.language.name === 'ja')?.name || pokemon.name,
                         image: pokemonData.sprites.front_default,
                         id: pokemonData.id,
-                        searchName: pokemon.name // 検索用の英語名を追加
+                        searchName: pokemon.name
                     };
                 });
 
@@ -279,6 +342,68 @@
             } catch (error) {
                 resultDiv.innerHTML = '<p>ポケモンが見つかりませんでした。正しい名前を入力してください。</p>';
             }
+        }
+
+        function getAllSprites(sprites) {
+            const spriteList = [];
+            
+            // 通常の姿
+            if (sprites.front_default) {
+                spriteList.push({
+                    name: '通常',
+                    url: sprites.front_default
+                });
+            }
+
+            // メス
+            if (sprites.front_female) {
+                spriteList.push({
+                    name: 'メス',
+                    url: sprites.front_female
+                });
+            }
+
+            // 色違い
+            if (sprites.front_shiny) {
+                spriteList.push({
+                    name: '色違い',
+                    url: sprites.front_shiny
+                });
+            }
+
+            // 色違いメス
+            if (sprites.front_shiny_female) {
+                spriteList.push({
+                    name: '色違い(メス)',
+                    url: sprites.front_shiny_female
+                });
+            }
+
+            // その他のフォーム
+            if (sprites.other) {
+                // 公式アートワーク
+                if (sprites.other['official-artwork']?.front_default) {
+                    spriteList.push({
+                        name: '公式アートワーク',
+                        url: sprites.other['official-artwork'].front_default
+                    });
+                }
+            }
+
+            return spriteList;
+        }
+
+        function updateMainSprite(element, spriteUrl) {
+            // メインスプライトを更新
+            document.getElementById('main-sprite').innerHTML = `
+                <img src="${spriteUrl}" alt="Pokemon sprite">
+            `;
+
+            // アクティブなスプライトのスタイルを更新
+            document.querySelectorAll('.form-sprite').forEach(sprite => {
+                sprite.classList.remove('active');
+            });
+            element.classList.add('active');
         }
     </script>
 </body>
