@@ -239,15 +239,19 @@
                 const speciesResponse = await fetch(data.species.url);
                 const speciesData = await speciesResponse.json();
 
-                // メガシンカの情報を取得
-                let megaEvolutions = [];
+                // メガシンカ、キョダイマックス、その他の特殊な姿の情報を取得
+                let specialForms = [];
                 try {
                     const varietiesPromises = speciesData.varieties
-                        .filter(v => v.pokemon.name.includes('-mega'))
+                        .filter(v => 
+                            v.pokemon.name.includes('-mega') || 
+                            v.pokemon.name.includes('-gmax') ||
+                            v.pokemon.name.includes('ogerpon-')
+                        )
                         .map(v => fetch(v.pokemon.url).then(res => res.json()));
-                    megaEvolutions = await Promise.all(varietiesPromises);
+                    specialForms = await Promise.all(varietiesPromises);
                 } catch (error) {
-                    console.log('メガシンカの情報の取得に失敗しました:', error);
+                    console.log('特殊な姿の情報の取得に失敗しました:', error);
                 }
 
                 // 進化チェーンの情報を取得
@@ -268,22 +272,41 @@
                     return `<span class="type-label" style="background-color: ${backgroundColor}">${getTypeInJapanese(typeName)}</span>`;
                 }).join(' ');
 
-                // 全てのスプライトを取得（メガシンカを含む）
+                // 全てのスプライトを取得（メガシンカとキョダイマックスを含む）
                 const sprites = getAllSprites(data.sprites);
                 
-                // メガシンカのスプライトを追加
-                megaEvolutions.forEach(mega => {
-                    if (mega.sprites.front_default) {
+                // メガシンカ、キョダイマックス、その他の特殊な姿のスプライトを追加
+                specialForms.forEach(form => {
+                    const isMega = form.name.includes('-mega');
+                    const isGmax = form.name.includes('-gmax');
+                    const isOgerpon = form.name.includes('ogerpon-');
+                    let formName = '';
+                    
+                    if (isMega) {
+                        formName = `メガシンカ${form.name.includes('mega-y') ? 'Y' : 'X'}`;
+                    } else if (isGmax) {
+                        formName = 'キョダイマックス';
+                    } else if (isOgerpon) {
+                        const ogerponForm = form.name.split('-')[1];
+                        const ogerponFormNames = {
+                            'wellspring': 'いど',
+                            'hearthflame': 'かまど',
+                            'cornerstone': 'いしずえ'
+                        };
+                        formName = `${ogerponFormNames[ogerponForm]}のお面`;
+                    }
+
+                    if (form.sprites.front_default) {
                         sprites.push({
-                            name: `メガシンカ${mega.name.includes('mega-y') ? 'Y' : 'X'}`,
-                            url: mega.sprites.front_default
+                            name: formName,
+                            url: form.sprites.front_default
                         });
                     }
-                    // メガシンカの色違いも追加
-                    if (mega.sprites.front_shiny) {
+                    
+                    if (form.sprites.front_shiny) {
                         sprites.push({
-                            name: `メガシンカ${mega.name.includes('mega-y') ? 'Y' : 'X'}（色違い）`,
-                            url: mega.sprites.front_shiny
+                            name: `${formName}（色違い）`,
+                            url: form.sprites.front_shiny
                         });
                     }
                 });
@@ -309,7 +332,9 @@
                             <img src="${sprites[0].url}" alt="${japaneseName}">
                         </div>
                         <p>図鑑番号: ${data.id}</p>
-                        <p>タイプ: ${typeHtml}</p>
+                        <div id="type-display">
+                            <p>タイプ: ${typeHtml}</p>
+                        </div>
                         <p>身長: ${data.height / 10}m</p>
                         <p>体重: ${data.weight / 10}kg</p>
                         <p style="font-style: italic;">${japaneseFlavorText}</p>
@@ -322,6 +347,21 @@
                         <p>進化チェーン読み込み中...</p>
                     </div>
                 `;
+
+                // オーガポンの別の姿のタイプ情報を保存
+                if (data.name.includes('ogerpon')) {
+                    window.ogerponTypes = {
+                        'default': data.types,
+                    };
+                    
+                    // 各形態のタイプ情報を保存
+                    specialForms.forEach(form => {
+                        if (form.name.includes('ogerpon-')) {
+                            const formName = form.name.split('-')[1];
+                            window.ogerponTypes[formName] = form.types;
+                        }
+                    });
+                }
 
                 // 進化チェーンを処理して表示
                 const evolutionChain = [];
@@ -433,6 +473,32 @@
                 sprite.classList.remove('active');
             });
             element.classList.add('active');
+
+            // オーガポンの場合、タイプを更新
+            if (window.ogerponTypes) {
+                const formName = element.querySelector('.form-name').textContent;
+                let types;
+                
+                if (formName.includes('いどのお面')) {
+                    types = window.ogerponTypes['wellspring'];
+                } else if (formName.includes('かまどのお面')) {
+                    types = window.ogerponTypes['hearthflame'];
+                } else if (formName.includes('いしずえのお面')) {
+                    types = window.ogerponTypes['cornerstone'];
+                } else {
+                    types = window.ogerponTypes['default'];
+                }
+
+                if (types) {
+                    const typeHtml = types.map(type => {
+                        const typeName = type.type.name;
+                        const backgroundColor = typeColors[typeName] || '#777';
+                        return `<span class="type-label" style="background-color: ${backgroundColor}">${getTypeInJapanese(typeName)}</span>`;
+                    }).join(' ');
+                    
+                    document.getElementById('type-display').innerHTML = `<p>タイプ: ${typeHtml}</p>`;
+                }
+            }
         }
     </script>
 </body>
